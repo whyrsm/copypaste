@@ -1,0 +1,193 @@
+import { Hono } from "hono";
+import { serveStatic } from "hono/bun";
+import { initDb, insertPaste, getPaste, deletePaste, incrementViews, incrementCopies, cleanExpired } from "./db";
+import { generateSlug } from "./slug";
+import { homePage, pastePage, passwordPage, errorPage } from "./views";
+
+const app = new Hono();
+
+const RESERVED_SLUGS = new Set(["api", "static", "favicon.ico", "health"]);
+const SLUG_REGEX = /^[a-zA-Z0-9_-]{3,100}$/;
+const MAX_CONTENT_LENGTH = 512 * 1024; // 512KB
+
+// Static files
+app.use("/static/*", serveStatic({ root: "./" }));
+
+// Home page
+app.get("/", (c) => c.html(homePage()));
+
+// Health check
+app.get("/health", (c) => c.json({ status: "ok" }));
+
+// Create paste
+app.post("/api/paste", async (c) => {
+  const body = await c.req.parseBody();
+  const content = String(body.content || "").trim();
+  const customSlug = String(body.slug || "").trim();
+  const password = String(body.password || "");
+  const expiresIn = String(body.expires_in || "");
+
+  if (!content) {
+    return c.html(homePage("Content is required."), 400);
+  }
+
+  if (content.length > MAX_CONTENT_LENGTH) {
+    return c.html(homePage("Content is too large (max 512KB)."), 400);
+  }
+
+  // Determine slug
+  let slug: string;
+  if (customSlug) {
+    if (!SLUG_REGEX.test(customSlug)) {
+      return c.html(
+        homePage(
+          "Invalid slug. Use 3-100 characters: letters, numbers, hyphens, underscores."
+        ),
+        400
+      );
+    }
+    if (RESERVED_SLUGS.has(customSlug.toLowerCase())) {
+      return c.html(homePage("This slug is reserved."), 400);
+    }
+    slug = customSlug;
+  } else {
+    slug = generateSlug();
+  }
+
+  // Hash password if provided
+  let passwordHash: string | null = null;
+  if (password) {
+    passwordHash = await Bun.password.hash(password);
+  }
+
+  // Compute expiration
+  let expiresAt: string | null = null;
+  if (expiresIn) {
+    const now = Date.now();
+    const durations: Record<string, number> = {
+      "1h": 60 * 60 * 1000,
+      "1d": 24 * 60 * 60 * 1000,
+      "7d": 7 * 24 * 60 * 60 * 1000,
+      "30d": 30 * 24 * 60 * 60 * 1000,
+    };
+    if (durations[expiresIn]) {
+      expiresAt = new Date(now + durations[expiresIn]).toISOString();
+    }
+  }
+
+  // Insert with collision retry
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const ok = insertPaste(slug, content, passwordHash, expiresAt);
+    if (ok) {
+      return c.redirect(`/${slug}`, 303);
+    }
+    // Collision
+    if (customSlug) {
+      return c.html(homePage("This slug is already taken."), 409);
+    }
+    slug = generateSlug();
+  }
+
+  return c.html(errorPage("Failed to create paste. Please try again.", 500), 500);
+});
+
+// Track copy event
+app.post("/:slug/copy", (c) => {
+  const slug = c.req.param("slug");
+  incrementCopies(slug);
+  return c.json({ ok: true });
+});
+
+// Raw paste content
+app.get("/:slug/raw", (c) => {
+  const slug = c.req.param("slug");
+  const paste = getPaste(slug);
+
+  if (!paste) {
+    return c.text("Not found", 404);
+  }
+
+  if (paste.expires_at && new Date(paste.expires_at) < new Date()) {
+    deletePaste(slug);
+    return c.text("Not found", 404);
+  }
+
+  if (paste.password_hash) {
+    return c.text("This paste is password protected", 403);
+  }
+
+  return c.text(paste.content);
+});
+
+// View paste
+app.get("/:slug", (c) => {
+  const slug = c.req.param("slug");
+  const paste = getPaste(slug);
+
+  if (!paste) {
+    return c.html(errorPage("Paste not found."), 404);
+  }
+
+  if (paste.expires_at && new Date(paste.expires_at) < new Date()) {
+    deletePaste(slug);
+    return c.html(errorPage("This paste has expired."), 404);
+  }
+
+  if (paste.password_hash) {
+    return c.html(passwordPage(slug));
+  }
+
+  incrementViews(slug);
+  return c.html(pastePage({ ...paste, views: paste.views + 1 }));
+});
+
+// Submit password for protected paste
+app.post("/:slug", async (c) => {
+  const slug = c.req.param("slug");
+  const body = await c.req.parseBody();
+  const password = String(body.password || "");
+
+  const paste = getPaste(slug);
+
+  if (!paste) {
+    return c.html(errorPage("Paste not found."), 404);
+  }
+
+  if (paste.expires_at && new Date(paste.expires_at) < new Date()) {
+    deletePaste(slug);
+    return c.html(errorPage("This paste has expired."), 404);
+  }
+
+  if (!paste.password_hash) {
+    incrementViews(slug);
+    return c.html(pastePage({ ...paste, views: paste.views + 1 }));
+  }
+
+  const valid = await Bun.password.verify(password, paste.password_hash);
+  if (!valid) {
+    return c.html(passwordPage(slug, "Incorrect password."), 401);
+  }
+
+  incrementViews(slug);
+  return c.html(pastePage({ ...paste, views: paste.views + 1 }));
+});
+
+// Global error handler
+app.onError((err, c) => {
+  console.error(err);
+  return c.html(errorPage("Something went wrong.", 500), 500);
+});
+
+// Initialize
+initDb();
+
+// Clean expired pastes every hour
+setInterval(cleanExpired, 60 * 60 * 1000);
+
+const port = parseInt(process.env.PORT || "3000");
+console.log(`CopyPaste running on http://localhost:${port}`);
+
+export default {
+  port,
+  fetch: app.fetch,
+};
