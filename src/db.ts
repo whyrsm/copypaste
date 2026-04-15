@@ -31,6 +31,9 @@ export function initDb() {
   if (!columns.includes("copies")) {
     db.run("ALTER TABLE pastes ADD COLUMN copies INTEGER NOT NULL DEFAULT 0");
   }
+  if (!columns.includes("language")) {
+    db.run("ALTER TABLE pastes ADD COLUMN language TEXT");
+  }
 }
 
 export interface Paste {
@@ -42,18 +45,20 @@ export interface Paste {
   copies: number;
   created_at: string;
   expires_at: string | null;
+  language: string | null;
 }
 
 export function insertPaste(
   slug: string,
   content: string,
   passwordHash: string | null,
-  expiresAt: string | null
+  expiresAt: string | null,
+  language: string | null
 ): boolean {
   try {
     db.run(
-      "INSERT INTO pastes (slug, content, password_hash, expires_at) VALUES (?, ?, ?, ?)",
-      [slug, content, passwordHash, expiresAt]
+      "INSERT INTO pastes (slug, content, password_hash, expires_at, language) VALUES (?, ?, ?, ?, ?)",
+      [slug, content, passwordHash, expiresAt, language]
     );
     return true;
   } catch (err: any) {
@@ -66,7 +71,7 @@ export function insertPaste(
 
 export function getPaste(slug: string): Paste | null {
   return db.query<Paste, [string]>(
-    "SELECT id, slug, content, password_hash, views, copies, created_at, expires_at FROM pastes WHERE slug = ?"
+    "SELECT id, slug, content, password_hash, views, copies, created_at, expires_at, language FROM pastes WHERE slug = ?"
   ).get(slug);
 }
 

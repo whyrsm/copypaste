@@ -2,3 +2,7 @@ node_modules/
 .env
 bun.lock
 *.db
+*.db-shm
+*.db-wal
+static/editor.js
+.claude/

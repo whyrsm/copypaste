@@ -1,5 +1,6 @@
 import { html, raw } from "hono/html";
 import type { HtmlEscapedString } from "hono/utils/html";
+import { LANGUAGES, LANGUAGE_LABELS, type Language } from "./languages";
 
 // Inline SVG icons (Lucide-style, 20x20)
 const icons = {
@@ -54,6 +55,12 @@ const icons = {
   moon: raw(
     `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>`
   ),
+  maximize: raw(
+    `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>`
+  ),
+  minimize: raw(
+    `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/></svg>`
+  ),
 };
 
 function layout(title: string, children: HtmlEscapedString) {
@@ -107,6 +114,29 @@ function layout(title: string, children: HtmlEscapedString) {
               }
               apply(current === 'dark' ? 'light' : 'dark');
             });
+
+            // Wake-up helper for Railway sleeping servers
+            window.__serverReady = false;
+            window.__wakePromise = null;
+            function wakeServer() {
+              if (window.__serverReady) return Promise.resolve();
+              if (window.__wakePromise) return window.__wakePromise;
+              window.__wakePromise = fetch('/health', { method: 'GET' })
+                .then(function() { window.__serverReady = true; })
+                .catch(function() { window.__serverReady = true; })
+                .finally(function() { window.__wakePromise = null; });
+              return window.__wakePromise;
+            }
+            // Wake on page load
+            wakeServer();
+            // Re-wake when user returns to tab after being away
+            document.addEventListener('visibilitychange', function() {
+              if (document.visibilityState === 'visible') {
+                window.__serverReady = false;
+                wakeServer();
+              }
+            });
+            window.wakeServer = wakeServer;
           })();
         </script>`)}
       </body>
@@ -123,16 +153,40 @@ export function homePage(error?: string) {
       </div>
 
       ${error ? html`<div class="toast error">${icons.alertCircle} ${error}</div>` : ""}
-      <form method="POST" action="/api/paste" class="card">
+      <form method="POST" action="/api/paste" class="card" id="paste-form">
         <div class="card-body">
-          <textarea
-            name="content"
-            placeholder="Paste your text here..."
-            rows="14"
-            required
-            autofocus
-            maxlength="524288"
-          ></textarea>
+          <div class="editor-wrapper" id="editor-wrapper">
+            <div class="editor-toolbar">
+              <div class="editor-toolbar-left">
+                <label for="language" class="editor-lang-label">
+                  <span class="label-icon">${icons.code}</span>
+                  Language
+                </label>
+                <select id="language" name="language" class="editor-lang-select">
+                  ${raw(
+                    LANGUAGES.map(
+                      (l) =>
+                        `<option value="${l}"${l === "plaintext" ? " selected" : ""}>${LANGUAGE_LABELS[l]}</option>`
+                    ).join("")
+                  )}
+                </select>
+              </div>
+              <button type="button" class="btn-icon" id="fullscreen-btn" title="Toggle fullscreen" aria-pressed="false">
+                <span class="icon-max">${icons.maximize}</span>
+                <span class="icon-min" style="display:none">${icons.minimize}</span>
+              </button>
+            </div>
+            <div id="editor-mount" class="editor-mount"></div>
+            <textarea
+              name="content"
+              id="content-input"
+              required
+              maxlength="524288"
+              aria-hidden="true"
+              tabindex="-1"
+              class="editor-hidden-input"
+            ></textarea>
+          </div>
         </div>
 
         <div class="card-footer">
@@ -183,9 +237,9 @@ export function homePage(error?: string) {
             </div>
           </div>
 
-          <button type="submit" class="btn-primary">
+          <button type="submit" class="btn-primary" id="submit-btn">
             ${icons.send}
-            <span>Create Paste</span>
+            <span class="submit-label">Create Paste</span>
           </button>
         </div>
       </form>
@@ -216,6 +270,49 @@ export function homePage(error?: string) {
           </div>
         </div>
       </div>
+
+      ${raw(`<script type="module" src="/static/editor.js"></script>`)}
+      ${raw(`<script type="module">
+        (async function(){
+          while (!window.CopyPasteEditor) await new Promise(r => setTimeout(r, 20));
+          var mount = document.getElementById('editor-mount');
+          var hidden = document.getElementById('content-input');
+          var wrapper = document.getElementById('editor-wrapper');
+          var fsBtn = document.getElementById('fullscreen-btn');
+          var langSel = document.getElementById('language');
+          var view = window.CopyPasteEditor.mount({
+            mountEl: mount,
+            initialContent: '',
+            initialLanguage: langSel.value,
+            hiddenInput: hidden,
+            fullscreenWrapper: wrapper,
+            fullscreenButton: fsBtn,
+            languageSelect: langSel,
+          });
+          setTimeout(function(){ view.focus(); }, 50);
+
+          var form = document.getElementById('paste-form');
+          var btn = document.getElementById('submit-btn');
+          var label = btn.querySelector('.submit-label');
+          form.addEventListener('submit', function(e) {
+            hidden.value = view.state.doc.toString();
+            if (!hidden.value.trim()) {
+              e.preventDefault();
+              view.focus();
+              return;
+            }
+            if (window.__serverReady) return;
+            e.preventDefault();
+            label.textContent = 'Waking server...';
+            btn.disabled = true;
+            wakeServer().then(function() {
+              label.textContent = 'Create Paste';
+              btn.disabled = false;
+              form.submit();
+            });
+          });
+        })();
+      </script>`)}
     `
   );
 }
@@ -227,11 +324,16 @@ export function pastePage(paste: {
   copies: number;
   created_at: string;
   expires_at: string | null;
+  language: string | null;
 }) {
   const created = new Date(paste.created_at).toLocaleString();
   const expires = paste.expires_at
     ? new Date(paste.expires_at).toLocaleString()
     : null;
+  const language = (paste.language && (LANGUAGES as readonly string[]).includes(paste.language)
+    ? (paste.language as Language)
+    : "plaintext");
+  const langLabel = LANGUAGE_LABELS[language];
 
   return layout(
     paste.slug,
@@ -249,6 +351,7 @@ export function pastePage(paste: {
           <div class="paste-meta">
             <span class="slug">${icons.fileText} /${paste.slug}</span>
             <div class="meta-tags">
+              <span class="tag">${icons.code} ${langLabel}</span>
               <span class="tag">${icons.calendar} ${created}</span>
               <span class="tag">${icons.eye} ${String(paste.views)} ${paste.views === 1 ? "view" : "views"}</span>
               <span class="tag" id="copy-count">${icons.clipboard} <span id="copy-num">${String(paste.copies)}</span> ${paste.copies === 1 ? "copy" : "copies"}</span>
@@ -256,6 +359,10 @@ export function pastePage(paste: {
             </div>
           </div>
           <div class="paste-actions">
+            <button type="button" class="btn-icon" id="fullscreen-btn" title="Toggle fullscreen" aria-pressed="false">
+              <span class="icon-max">${icons.maximize}</span>
+              <span class="icon-min" style="display:none">${icons.minimize}</span>
+            </button>
             <button onclick="copyContent()" class="btn-action" id="copy-btn" title="Copy to clipboard">
               <span class="copy-icon">${icons.clipboard}</span>
               <span class="check-icon" style="display:none">${icons.check}</span>
@@ -268,20 +375,56 @@ export function pastePage(paste: {
           </div>
         </div>
         <div class="paste-body">
-          <pre class="paste-content"><code>${paste.content}</code></pre>
+          <div class="editor-wrapper viewer" id="editor-wrapper" data-language="${language}">
+            <div id="editor-mount" class="editor-mount"></div>
+            <pre class="paste-content" id="paste-fallback"><code>${paste.content}</code></pre>
+          </div>
         </div>
       </div>
+      ${raw(`<script id="paste-data" type="application/json">${JSON.stringify({
+        content: paste.content,
+        language,
+      })}</script>`)}
+      ${raw(`<script type="module" src="/static/editor.js"></script>`)}
+      ${raw(`<script type="module">
+        (async function(){
+          while (!window.CopyPasteEditor) await new Promise(r => setTimeout(r, 20));
+          var data = JSON.parse(document.getElementById('paste-data').textContent);
+          var fallback = document.getElementById('paste-fallback');
+          if (fallback) fallback.remove();
+          var mount = document.getElementById('editor-mount');
+          var wrapper = document.getElementById('editor-wrapper');
+          var fsBtn = document.getElementById('fullscreen-btn');
+          window.CopyPasteEditor.mount({
+            mountEl: mount,
+            initialContent: data.content,
+            initialLanguage: data.language,
+            readOnly: true,
+            fullscreenWrapper: wrapper,
+            fullscreenButton: fsBtn,
+          });
+        })();
+      </script>`)}
       ${raw(`<script>
         document.getElementById('share-url').textContent = location.href;
 
+        function getPasteText() {
+          var el = document.getElementById('paste-data');
+          if (el) return JSON.parse(el.textContent).content;
+          var f = document.querySelector('.paste-content code');
+          return f ? f.textContent : '';
+        }
+
         function trackCopy() {
-          fetch(location.pathname + '/copy', { method: 'POST' });
+          wakeServer().then(function() {
+            fetch(location.pathname + '/copy', { method: 'POST' });
+          });
           var el = document.getElementById('copy-num');
           if (el) el.textContent = String(Number(el.textContent) + 1);
         }
 
         function copyContent() {
-          const text = document.querySelector('.paste-content code').textContent;
+          const text = getPasteText();
           navigator.clipboard.writeText(text).then(() => {
             trackCopy();
             const btn = document.getElementById('copy-btn');
@@ -325,7 +468,7 @@ export function passwordPage(slug: string, error?: string) {
         <h2>Password Protected</h2>
         <p class="subtitle">This paste requires a password to view.</p>
         ${error ? html`<div class="toast error inline">${error}</div>` : ""}
-        <form method="POST" action="/${slug}" class="password-form">
+        <form method="POST" action="/${slug}" class="password-form" id="pw-form">
           <div class="input-group">
             <input
               type="password"
@@ -334,12 +477,30 @@ export function passwordPage(slug: string, error?: string) {
               required
               autofocus
             />
-            <button type="submit" class="btn-primary compact">
+            <button type="submit" class="btn-primary compact" id="pw-btn">
               ${icons.unlock}
-              <span>Unlock</span>
+              <span class="pw-label">Unlock</span>
             </button>
           </div>
         </form>
+        ${raw(`<script>
+          (function(){
+            var form = document.getElementById('pw-form');
+            var btn = document.getElementById('pw-btn');
+            var label = btn.querySelector('.pw-label');
+            form.addEventListener('submit', function(e) {
+              if (window.__serverReady) return;
+              e.preventDefault();
+              label.textContent = 'Waking server...';
+              btn.disabled = true;
+              wakeServer().then(function() {
+                label.textContent = 'Unlock';
+                btn.disabled = false;
+                form.submit();
+              });
+            });
+          })();
+        </script>`)}
       </div>
     `
   );

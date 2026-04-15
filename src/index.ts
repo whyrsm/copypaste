@@ -3,6 +3,7 @@ import { serveStatic } from "hono/bun";
 import { initDb, insertPaste, getPaste, deletePaste, incrementViews, incrementCopies, cleanExpired } from "./db";
 import { generateSlug } from "./slug";
 import { homePage, pastePage, passwordPage, errorPage } from "./views";
+import { isLanguage } from "./languages";
 
 const app = new Hono();
 
@@ -26,6 +27,8 @@ app.post("/api/paste", async (c) => {
   const customSlug = String(body.slug || "").trim();
   const password = String(body.password || "");
   const expiresIn = String(body.expires_in || "");
+  const languageInput = String(body.language || "plaintext");
+  const language = isLanguage(languageInput) ? languageInput : "plaintext";
 
   if (!content) {
     return c.html(homePage("Content is required."), 400);
@@ -77,7 +80,7 @@ app.post("/api/paste", async (c) => {
 
   // Insert with collision retry
   for (let attempt = 0; attempt < 3; attempt++) {
-    const ok = insertPaste(slug, content, passwordHash, expiresAt);
+    const ok = insertPaste(slug, content, passwordHash, expiresAt, language);
     if (ok) {
       return c.redirect(`/${slug}`, 303);
     }
