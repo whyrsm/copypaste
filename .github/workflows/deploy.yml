@@ -21,7 +21,7 @@ jobs:
         run: bun install
 
       - name: Type check
-        run: bun tsc --noEmit
+        run: bunx tsc --noEmit
 
       - name: Lint
         run: bun run lint
@@ -41,9 +41,9 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script_stop: true
           command_timeout: 120s
           script: |
+            set -e
             echo "=== Starting deploy ==="
             cd /opt/copypaste
             git pull origin main
