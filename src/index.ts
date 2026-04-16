@@ -122,6 +122,10 @@ app.post("/api/paste", async (c) => {
 // Track copy event
 app.post("/:slug/copy", (c) => {
   const slug = c.req.param("slug");
+  const paste = getPaste(slug);
+  if (!paste) {
+    return c.json({ error: "Not found" }, 404);
+  }
   incrementCopies(slug);
   return c.json({ ok: true });
 });
