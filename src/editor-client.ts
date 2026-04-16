@@ -1,3 +1,4 @@
+/// <reference lib="dom" />
 import { EditorView, basicSetup } from "codemirror";
 import { EditorState, Compartment } from "@codemirror/state";
 import { oneDark } from "@codemirror/theme-one-dark";
@@ -16,6 +17,19 @@ import { xml as langXml } from "@codemirror/lang-xml";
 import { cpp as langCpp } from "@codemirror/lang-cpp";
 import { StreamLanguage } from "@codemirror/language";
 import { shell as shellMode } from "@codemirror/legacy-modes/mode/shell";
+
+type LanguageName = keyof typeof langFor;
+
+interface EditorMountOptions {
+  mountEl: HTMLElement;
+  initialContent?: string;
+  initialLanguage?: string;
+  readOnly?: boolean;
+  hiddenInput?: HTMLInputElement | null;
+  fullscreenWrapper?: HTMLElement | null;
+  fullscreenButton?: HTMLElement | null;
+  languageSelect?: HTMLSelectElement | null;
+}
 
 const langFor = {
   plaintext: () => [],
@@ -38,8 +52,8 @@ const langFor = {
   cpp: () => langCpp(),
 };
 
-function resolveLang(name) {
-  const fn = langFor[name] || langFor.plaintext;
+function resolveLang(name: string) {
+  const fn = langFor[name as LanguageName] || langFor.plaintext;
   return fn();
 }
 
@@ -49,7 +63,7 @@ function currentTheme() {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
-function themeExtension(theme) {
+function themeExtension(theme: string) {
   return theme === "dark" ? oneDark : [];
 }
 
@@ -74,7 +88,7 @@ const editorTheme = EditorView.theme({
   ".cm-content": { padding: "12px 0" },
 });
 
-function mount(options) {
+function mount(options: EditorMountOptions) {
   const {
     mountEl,
     initialContent = "",
@@ -141,8 +155,8 @@ function mount(options) {
       const active = fullscreenWrapper.classList.toggle("editor-fullscreen");
       document.body.classList.toggle("editor-fullscreen-open", active);
       fullscreenButton.setAttribute("aria-pressed", String(active));
-      const max = fullscreenButton.querySelector(".icon-max");
-      const min = fullscreenButton.querySelector(".icon-min");
+      const max = fullscreenButton.querySelector<HTMLElement>(".icon-max");
+      const min = fullscreenButton.querySelector<HTMLElement>(".icon-min");
       if (max && min) {
         max.style.display = active ? "none" : "";
         min.style.display = active ? "" : "none";
