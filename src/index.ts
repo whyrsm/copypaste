@@ -12,6 +12,31 @@ const RESERVED_SLUGS = new Set(["api", "static", "favicon.ico", "health", "my"])
 const SLUG_REGEX = /^[a-zA-Z0-9_-]{3,100}$/;
 const MAX_CONTENT_LENGTH = 512 * 1024; // 512KB
 
+// In-memory rate limiter: max 10 paste creates per IP per minute
+const RATE_LIMIT = 10;
+const RATE_WINDOW_MS = 60 * 1000;
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+
+function isRateLimited(ip: string): boolean {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_WINDOW_MS });
+    return false;
+  }
+  if (entry.count >= RATE_LIMIT) return true;
+  entry.count++;
+  return false;
+}
+
+// Periodically purge expired rate limit entries to avoid memory growth
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of rateLimitMap) {
+    if (now > entry.resetAt) rateLimitMap.delete(ip);
+  }
+}, RATE_WINDOW_MS);
+
 // Static files
 app.use("/static/*", serveStatic({ root: "./" }));
 
@@ -46,6 +71,11 @@ app.get("/my", (c) => {
 
 // Create paste
 app.post("/api/paste", async (c) => {
+  const ip = c.req.header("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
+  if (isRateLimited(ip)) {
+    return c.html(homePage("Too many pastes. Please wait a minute and try again."), 429);
+  }
+
   const body = await c.req.parseBody();
   const content = String(body.content || "").trim();
   const customSlug = String(body.slug || "").trim();
