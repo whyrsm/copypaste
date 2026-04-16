@@ -4,7 +4,8 @@
   "scripts": {
     "build:editor": "bun build src/editor-client.ts --outfile static/editor.js --target browser --format esm --minify",
     "dev": "bun run build:editor && bun run --hot src/index.ts",
-    "start": "bun run build:editor && bun run src/index.ts"
+    "start": "bun run build:editor && bun run src/index.ts",
+    "test": "bun test"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.3",

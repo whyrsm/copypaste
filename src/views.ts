@@ -67,7 +67,7 @@ const icons = {
   ),
 };
 
-function layout(title: string, children: HtmlEscapedString) {
+function layout(title: string, children: HtmlEscapedString | Promise<HtmlEscapedString>) {
   return html`<!doctype html>
     <html lang="en">
       <head>
@@ -107,45 +107,7 @@ function layout(title: string, children: HtmlEscapedString) {
             <span>Uses cookies to remember your pastes</span>
           </footer>
         </div>
-        ${raw(`<script>
-          (function(){
-            var btn = document.getElementById('theme-toggle');
-            function apply(theme) {
-              document.documentElement.setAttribute('data-theme', theme);
-              localStorage.setItem('theme', theme);
-            }
-            btn.addEventListener('click', function(){
-              var current = document.documentElement.getAttribute('data-theme');
-              if (!current) {
-                current = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-              }
-              apply(current === 'dark' ? 'light' : 'dark');
-            });
-
-            // Wake-up helper for Railway sleeping servers
-            window.__serverReady = false;
-            window.__wakePromise = null;
-            function wakeServer() {
-              if (window.__serverReady) return Promise.resolve();
-              if (window.__wakePromise) return window.__wakePromise;
-              window.__wakePromise = fetch('/health', { method: 'GET' })
-                .then(function() { window.__serverReady = true; })
-                .catch(function() { window.__serverReady = true; })
-                .finally(function() { window.__wakePromise = null; });
-              return window.__wakePromise;
-            }
-            // Wake on page load
-            wakeServer();
-            // Re-wake when user returns to tab after being away
-            document.addEventListener('visibilitychange', function() {
-              if (document.visibilityState === 'visible') {
-                window.__serverReady = false;
-                wakeServer();
-              }
-            });
-            window.wakeServer = wakeServer;
-          })();
-        </script>`)}
+        ${raw('<script src="/static/theme.js"></script>')}
       </body>
     </html>`;
 }
@@ -284,73 +246,8 @@ export function homePage(error?: string) {
         </div>
       </div>
 
-      ${raw(`<script type="module" src="/static/editor.js"></script>`)}
-      ${raw(`<script type="module">
-        (async function(){
-          while (!window.CopyPasteEditor) await new Promise(r => setTimeout(r, 20));
-          var mount = document.getElementById('editor-mount');
-          var hidden = document.getElementById('content-input');
-          var wrapper = document.getElementById('editor-wrapper');
-          var fsBtn = document.getElementById('fullscreen-btn');
-          var langSel = document.getElementById('language');
-          var view = window.CopyPasteEditor.mount({
-            mountEl: mount,
-            initialContent: '',
-            initialLanguage: langSel.value,
-            hiddenInput: hidden,
-            fullscreenWrapper: wrapper,
-            fullscreenButton: fsBtn,
-            languageSelect: langSel,
-          });
-          setTimeout(function(){ view.focus(); }, 50);
-
-          var form = document.getElementById('paste-form');
-          var btn = document.getElementById('submit-btn');
-          var label = btn.querySelector('.submit-label');
-          form.addEventListener('submit', function(e) {
-            hidden.value = view.state.doc.toString();
-            if (!hidden.value.trim()) {
-              e.preventDefault();
-              view.focus();
-              return;
-            }
-            if (window.__serverReady) return;
-            e.preventDefault();
-            label.textContent = 'Waking server...';
-            btn.disabled = true;
-            wakeServer().then(function() {
-              label.textContent = 'Create Paste';
-              btn.disabled = false;
-              form.submit();
-            });
-          });
-        })();
-      </script>`)}
-      ${raw(`<script>
-        (function(){
-          try {
-            var KEY = 'copypaste_history';
-            var history = JSON.parse(localStorage.getItem(KEY) || '[]');
-            if (!history.length) return;
-            var now = new Date().getTime();
-            var container = document.getElementById('recent-pastes');
-            var list = document.getElementById('recent-list');
-            var items = history.filter(function(e) {
-              return !e.expiresAt || new Date(e.expiresAt).getTime() > now;
-            }).slice(0, 10);
-            if (!items.length) return;
-            var h = items.map(function(e) {
-              var date = new Date(e.createdAt).toLocaleDateString();
-              return '<a href="/' + e.slug + '" class="recent-item">'
-                + '<span class="recent-slug">/' + e.slug + '</span>'
-                + '<span class="recent-meta">' + (e.language || 'plaintext') + ' \\u00b7 ' + date + '</span>'
-                + '</a>';
-            }).join('');
-            list.innerHTML = h;
-            container.style.display = '';
-          } catch(e) {}
-        })();
-      </script>`)}
+      ${raw('<script type="module" src="/static/editor.js"></script>')}
+      ${raw('<script type="module" src="/static/home.js"></script>')}
     `
   );
 }
@@ -425,95 +322,8 @@ export function pastePage(paste: {
         expiresAt: paste.expires_at,
       })}</script>`)}
       ${isAuthor ? raw('<script>window.__isAuthor = true;</script>') : ''}
-      ${raw(`<script type="module" src="/static/editor.js"></script>`)}
-      ${raw(`<script type="module">
-        (async function(){
-          while (!window.CopyPasteEditor) await new Promise(r => setTimeout(r, 20));
-          var data = JSON.parse(document.getElementById('paste-data').textContent);
-          var fallback = document.getElementById('paste-fallback');
-          if (fallback) fallback.remove();
-          var mount = document.getElementById('editor-mount');
-          var wrapper = document.getElementById('editor-wrapper');
-          var fsBtn = document.getElementById('fullscreen-btn');
-          window.CopyPasteEditor.mount({
-            mountEl: mount,
-            initialContent: data.content,
-            initialLanguage: data.language,
-            readOnly: true,
-            fullscreenWrapper: wrapper,
-            fullscreenButton: fsBtn,
-          });
-        })();
-      </script>`)}
-      ${raw(`<script>
-        document.getElementById('share-url').textContent = location.href;
-
-        function getPasteText() {
-          var el = document.getElementById('paste-data');
-          if (el) return JSON.parse(el.textContent).content;
-          var f = document.querySelector('.paste-content code');
-          return f ? f.textContent : '';
-        }
-
-        function trackCopy() {
-          wakeServer().then(function() {
-            fetch(location.pathname + '/copy', { method: 'POST' });
-          });
-          var el = document.getElementById('copy-num');
-          if (el) el.textContent = String(Number(el.textContent) + 1);
-        }
-
-        function copyContent() {
-          const text = getPasteText();
-          navigator.clipboard.writeText(text).then(() => {
-            trackCopy();
-            const btn = document.getElementById('copy-btn');
-            btn.querySelector('.copy-icon').style.display = 'none';
-            btn.querySelector('.check-icon').style.display = '';
-            btn.querySelector('.copy-label').textContent = 'Copied!';
-            btn.classList.add('copied');
-            setTimeout(() => {
-              btn.querySelector('.copy-icon').style.display = '';
-              btn.querySelector('.check-icon').style.display = 'none';
-              btn.querySelector('.copy-label').textContent = 'Copy';
-              btn.classList.remove('copied');
-            }, 2000);
-          });
-        }
-
-        function copyUrl() {
-          navigator.clipboard.writeText(location.href).then(() => {
-            const btn = document.getElementById('url-btn');
-            btn.querySelector('.url-label').textContent = 'Copied!';
-            btn.classList.add('copied');
-            setTimeout(() => {
-              btn.querySelector('.url-label').textContent = 'Copy Link';
-              btn.classList.remove('copied');
-            }, 2000);
-          });
-        }
-
-        // Save to localStorage history if author
-        (function() {
-          if (!window.__isAuthor) return;
-          try {
-            var KEY = 'copypaste_history';
-            var MAX = 50;
-            var history = JSON.parse(localStorage.getItem(KEY) || '[]');
-            var data = JSON.parse(document.getElementById('paste-data').textContent);
-            var slug = location.pathname.slice(1);
-            history = history.filter(function(e) { return e.slug !== slug; });
-            history.unshift({
-              slug: slug,
-              language: data.language || 'plaintext',
-              createdAt: new Date().toISOString(),
-              expiresAt: data.expiresAt || null
-            });
-            if (history.length > MAX) history = history.slice(0, MAX);
-            localStorage.setItem(KEY, JSON.stringify(history));
-          } catch(e) {}
-        })();
-      </script>`)}
+      ${raw('<script type="module" src="/static/editor.js"></script>')}
+      ${raw('<script type="module" src="/static/paste.js"></script>')}
     `
   );
 }
@@ -594,24 +404,7 @@ export function passwordPage(slug: string, error?: string) {
             </button>
           </div>
         </form>
-        ${raw(`<script>
-          (function(){
-            var form = document.getElementById('pw-form');
-            var btn = document.getElementById('pw-btn');
-            var label = btn.querySelector('.pw-label');
-            form.addEventListener('submit', function(e) {
-              if (window.__serverReady) return;
-              e.preventDefault();
-              label.textContent = 'Waking server...';
-              btn.disabled = true;
-              wakeServer().then(function() {
-                label.textContent = 'Unlock';
-                btn.disabled = false;
-                form.submit();
-              });
-            });
-          })();
-        </script>`)}
+        ${raw('<script src="/static/password.js"></script>')}
       </div>
     `
   );
