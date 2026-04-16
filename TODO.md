@@ -56,7 +56,7 @@ Tracking document for code quality improvements before open-source release.
 
 ## Priority 3 — Polish
 
-### [ ] CI quality gates
+### [x] CI quality gates
 - Add to GitHub Actions workflow: `bun tsc --noEmit` (type check), `bun test`, `biome check`
 - Fail the build on lint/type/test errors
 - **Why:** Prevents regressions. Shows mature development workflow.
