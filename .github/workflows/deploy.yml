@@ -17,9 +17,14 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script_stop: true
+          command_timeout: 60s
           script: |
+            echo "=== Starting deploy ==="
             cd /opt/copypaste
             git pull origin main
+            echo "=== Restarting service ==="
             systemctl restart copypaste.service
             sleep 3
             systemctl is-active copypaste.service
+            echo "=== Deploy complete ==="
