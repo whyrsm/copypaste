@@ -354,21 +354,21 @@ export function myPastesPage(pastes: Paste[]) {
                   </tr>
                 </thead>
                 <tbody>
-                  ${raw(pastes.map(p => {
+                  ${pastes.map(p => {
                     const created = new Date(p.created_at).toLocaleDateString();
                     const expires = p.expires_at ? new Date(p.expires_at).toLocaleDateString() : "Never";
                     const lang = p.language && (LANGUAGES as readonly string[]).includes(p.language)
                       ? LANGUAGE_LABELS[p.language as Language]
                       : "Plain Text";
-                    return `<tr>
-                      <td><a href="/${p.slug}">${p.password_hash ? '<span class="lock-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span> ' : ''}/${p.slug}</a></td>
+                    return html`<tr>
+                      <td><a href="/${p.slug}">${p.password_hash ? raw('<span class="lock-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span> ') : ""}/${p.slug}</a></td>
                       <td>${lang}</td>
                       <td>${created}</td>
                       <td>${expires}</td>
                       <td>${p.views}</td>
                       <td>${p.copies}</td>
                     </tr>`;
-                  }).join(""))}
+                  })}
                 </tbody>
               </table>
             </div>`
