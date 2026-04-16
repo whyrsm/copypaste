@@ -34,6 +34,10 @@ export function initDb() {
   if (!columns.includes("language")) {
     db.run("ALTER TABLE pastes ADD COLUMN language TEXT");
   }
+  if (!columns.includes("author_token")) {
+    db.run("ALTER TABLE pastes ADD COLUMN author_token TEXT");
+  }
+  db.run("CREATE INDEX IF NOT EXISTS idx_pastes_author_token ON pastes (author_token)");
 }
 
 export interface Paste {
@@ -46,6 +50,7 @@ export interface Paste {
   created_at: string;
   expires_at: string | null;
   language: string | null;
+  author_token: string | null;
 }
 
 export function insertPaste(
@@ -53,12 +58,13 @@ export function insertPaste(
   content: string,
   passwordHash: string | null,
   expiresAt: string | null,
-  language: string | null
+  language: string | null,
+  authorToken: string | null
 ): boolean {
   try {
     db.run(
-      "INSERT INTO pastes (slug, content, password_hash, expires_at, language) VALUES (?, ?, ?, ?, ?)",
-      [slug, content, passwordHash, expiresAt, language]
+      "INSERT INTO pastes (slug, content, password_hash, expires_at, language, author_token) VALUES (?, ?, ?, ?, ?, ?)",
+      [slug, content, passwordHash, expiresAt, language, authorToken]
     );
     return true;
   } catch (err: any) {
@@ -71,8 +77,14 @@ export function insertPaste(
 
 export function getPaste(slug: string): Paste | null {
   return db.query<Paste, [string]>(
-    "SELECT id, slug, content, password_hash, views, copies, created_at, expires_at, language FROM pastes WHERE slug = ?"
+    "SELECT id, slug, content, password_hash, views, copies, created_at, expires_at, language, author_token FROM pastes WHERE slug = ?"
   ).get(slug);
+}
+
+export function getPastesByAuthor(authorToken: string): Paste[] {
+  return db.query<Paste, [string]>(
+    "SELECT id, slug, content, password_hash, views, copies, created_at, expires_at, language, author_token FROM pastes WHERE author_token = ? ORDER BY created_at DESC LIMIT 100"
+  ).all(authorToken);
 }
 
 export function incrementViews(slug: string) {

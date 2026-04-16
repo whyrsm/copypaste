@@ -1,6 +1,7 @@
 import { html, raw } from "hono/html";
 import type { HtmlEscapedString } from "hono/utils/html";
 import { LANGUAGES, LANGUAGE_LABELS, type Language } from "./languages";
+import type { Paste } from "./db";
 
 // Inline SVG icons (Lucide-style, 20x20)
 const icons = {
@@ -42,6 +43,9 @@ const icons = {
   ),
   unlock: raw(
     `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>`
+  ),
+  history: raw(
+    `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>`
   ),
   home: raw(
     `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>`
@@ -90,6 +94,7 @@ function layout(title: string, children: HtmlEscapedString) {
                 <span class="icon-sun">${icons.sun}</span>
                 <span class="icon-moon">${icons.moon}</span>
               </button>
+              <a href="/my" class="btn-icon" title="My pastes">${icons.history}</a>
               <a href="/" class="btn-icon" title="New paste">${icons.plus}</a>
             </div>
           </header>
@@ -98,6 +103,8 @@ function layout(title: string, children: HtmlEscapedString) {
             <span>CopyPaste</span>
             <span class="dot"></span>
             <span>Simple. No login. Just paste.</span>
+            <span class="dot"></span>
+            <span>Uses cookies to remember your pastes</span>
           </footer>
         </div>
         ${raw(`<script>
@@ -244,6 +251,12 @@ export function homePage(error?: string) {
         </div>
       </form>
 
+      <div id="recent-pastes" class="recent-pastes" style="display:none">
+        <h3>My Recent Pastes</h3>
+        <div id="recent-list" class="recent-list"></div>
+        <a href="/my" class="view-all-link">View all my pastes &rarr;</a>
+      </div>
+
       <div class="how-it-works">
         <h3>How it works</h3>
         <div class="steps">
@@ -313,6 +326,31 @@ export function homePage(error?: string) {
           });
         })();
       </script>`)}
+      ${raw(`<script>
+        (function(){
+          try {
+            var KEY = 'copypaste_history';
+            var history = JSON.parse(localStorage.getItem(KEY) || '[]');
+            if (!history.length) return;
+            var now = new Date().getTime();
+            var container = document.getElementById('recent-pastes');
+            var list = document.getElementById('recent-list');
+            var items = history.filter(function(e) {
+              return !e.expiresAt || new Date(e.expiresAt).getTime() > now;
+            }).slice(0, 10);
+            if (!items.length) return;
+            var h = items.map(function(e) {
+              var date = new Date(e.createdAt).toLocaleDateString();
+              return '<a href="/' + e.slug + '" class="recent-item">'
+                + '<span class="recent-slug">/' + e.slug + '</span>'
+                + '<span class="recent-meta">' + (e.language || 'plaintext') + ' \\u00b7 ' + date + '</span>'
+                + '</a>';
+            }).join('');
+            list.innerHTML = h;
+            container.style.display = '';
+          } catch(e) {}
+        })();
+      </script>`)}
     `
   );
 }
@@ -325,7 +363,7 @@ export function pastePage(paste: {
   created_at: string;
   expires_at: string | null;
   language: string | null;
-}) {
+}, isAuthor: boolean = false) {
   const created = new Date(paste.created_at).toLocaleString();
   const expires = paste.expires_at
     ? new Date(paste.expires_at).toLocaleString()
@@ -384,7 +422,9 @@ export function pastePage(paste: {
       ${raw(`<script id="paste-data" type="application/json">${JSON.stringify({
         content: paste.content,
         language,
+        expiresAt: paste.expires_at,
       })}</script>`)}
+      ${isAuthor ? raw('<script>window.__isAuthor = true;</script>') : ''}
       ${raw(`<script type="module" src="/static/editor.js"></script>`)}
       ${raw(`<script type="module">
         (async function(){
@@ -452,7 +492,78 @@ export function pastePage(paste: {
             }, 2000);
           });
         }
+
+        // Save to localStorage history if author
+        (function() {
+          if (!window.__isAuthor) return;
+          try {
+            var KEY = 'copypaste_history';
+            var MAX = 50;
+            var history = JSON.parse(localStorage.getItem(KEY) || '[]');
+            var data = JSON.parse(document.getElementById('paste-data').textContent);
+            var slug = location.pathname.slice(1);
+            history = history.filter(function(e) { return e.slug !== slug; });
+            history.unshift({
+              slug: slug,
+              language: data.language || 'plaintext',
+              createdAt: new Date().toISOString(),
+              expiresAt: data.expiresAt || null
+            });
+            if (history.length > MAX) history = history.slice(0, MAX);
+            localStorage.setItem(KEY, JSON.stringify(history));
+          } catch(e) {}
+        })();
       </script>`)}
+    `
+  );
+}
+
+export function myPastesPage(pastes: Paste[]) {
+  return layout(
+    "My Pastes",
+    html`
+      <div class="card">
+        <div class="my-pastes-header">
+          <h2>${icons.fileText} My Pastes</h2>
+          <p class="subtitle">Based on your browser session. Clearing cookies will reset this list.</p>
+        </div>
+        ${pastes.length === 0
+          ? html`<div class="empty-state">
+              <p>No pastes found. <a href="/">Create one</a> to get started.</p>
+            </div>`
+          : html`<div class="table-wrap">
+              <table class="paste-table">
+                <thead>
+                  <tr>
+                    <th>Slug</th>
+                    <th>Language</th>
+                    <th>Created</th>
+                    <th>Expires</th>
+                    <th>Views</th>
+                    <th>Copies</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${raw(pastes.map(p => {
+                    const created = new Date(p.created_at).toLocaleDateString();
+                    const expires = p.expires_at ? new Date(p.expires_at).toLocaleDateString() : "Never";
+                    const lang = p.language && (LANGUAGES as readonly string[]).includes(p.language)
+                      ? LANGUAGE_LABELS[p.language as Language]
+                      : "Plain Text";
+                    return `<tr>
+                      <td><a href="/${p.slug}">${p.password_hash ? '<span class="lock-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span> ' : ''}/${p.slug}</a></td>
+                      <td>${lang}</td>
+                      <td>${created}</td>
+                      <td>${expires}</td>
+                      <td>${p.views}</td>
+                      <td>${p.copies}</td>
+                    </tr>`;
+                  }).join(""))}
+                </tbody>
+              </table>
+            </div>`
+        }
+      </div>
     `
   );
 }

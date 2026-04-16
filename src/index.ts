@@ -1,24 +1,48 @@
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
-import { initDb, insertPaste, getPaste, deletePaste, incrementViews, incrementCopies, cleanExpired } from "./db";
+import { getCookie, setCookie } from "hono/cookie";
+import { initDb, insertPaste, getPaste, getPastesByAuthor, deletePaste, incrementViews, incrementCopies, cleanExpired } from "./db";
 import { generateSlug } from "./slug";
-import { homePage, pastePage, passwordPage, errorPage } from "./views";
+import { homePage, pastePage, passwordPage, errorPage, myPastesPage } from "./views";
 import { isLanguage } from "./languages";
 
-const app = new Hono();
+const app = new Hono<{ Variables: { authorToken: string } }>();
 
-const RESERVED_SLUGS = new Set(["api", "static", "favicon.ico", "health"]);
+const RESERVED_SLUGS = new Set(["api", "static", "favicon.ico", "health", "my"]);
 const SLUG_REGEX = /^[a-zA-Z0-9_-]{3,100}$/;
 const MAX_CONTENT_LENGTH = 512 * 1024; // 512KB
 
 // Static files
 app.use("/static/*", serveStatic({ root: "./" }));
 
+// Anonymous author token cookie
+app.use("*", async (c, next) => {
+  let token = getCookie(c, "author_token");
+  if (!token) {
+    token = crypto.randomUUID();
+    setCookie(c, "author_token", token, {
+      path: "/",
+      httpOnly: true,
+      sameSite: "Lax",
+      maxAge: 60 * 60 * 24 * 400, // 400 days (max allowed)
+    });
+  }
+  c.set("authorToken", token);
+  await next();
+});
+
 // Home page
 app.get("/", (c) => c.html(homePage()));
 
 // Health check
 app.get("/health", (c) => c.json({ status: "ok" }));
+
+// My pastes
+app.get("/my", (c) => {
+  const authorToken = c.get("authorToken");
+  const pastes = getPastesByAuthor(authorToken);
+  return c.html(myPastesPage(pastes));
+});
 
 // Create paste
 app.post("/api/paste", async (c) => {
@@ -79,8 +103,9 @@ app.post("/api/paste", async (c) => {
   }
 
   // Insert with collision retry
+  const authorToken = c.get("authorToken");
   for (let attempt = 0; attempt < 3; attempt++) {
-    const ok = insertPaste(slug, content, passwordHash, expiresAt, language);
+    const ok = insertPaste(slug, content, passwordHash, expiresAt, language, authorToken);
     if (ok) {
       return c.redirect(`/${slug}`, 303);
     }
@@ -140,8 +165,9 @@ app.get("/:slug", (c) => {
     return c.html(passwordPage(slug));
   }
 
+  const isAuthor = paste.author_token === c.get("authorToken");
   incrementViews(slug);
-  return c.html(pastePage({ ...paste, views: paste.views + 1 }));
+  return c.html(pastePage({ ...paste, views: paste.views + 1 }, isAuthor));
 });
 
 // Submit password for protected paste
