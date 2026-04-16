@@ -4,18 +4,18 @@ Tracking document for code quality improvements before open-source release.
 
 ## Priority 1 — High Impact
 
-### [ ] Add test suite
+### [x] Add test suite
 - Set up `bun test`
 - Unit tests: `slug.ts` (format, uniqueness), `languages.ts` (isLanguage), `db.ts` (CRUD, expiration, collision)
 - Integration tests: route handlers in `index.ts` (create paste, view paste, password flow, expiration, raw endpoint)
 - Edge cases: max content length, reserved slugs, invalid slug format
 - **Why:** No tests is the biggest red flag for portfolio review. Shows engineering discipline.
 
-### [ ] Add LICENSE file
+### [x] Add LICENSE file
 - Pick a license (MIT recommended for pastebin)
 - **Why:** Required for open-source. Without it, code is technically all-rights-reserved.
 
-### [ ] Extract inline JS from `views.ts`
+### [x] Extract inline JS from `views.ts`
 - Move client-side scripts to separate files in `/static/`:
   - `static/theme.js` — theme toggle + persistence
   - `static/wake.js` — Railway wake-server helper
