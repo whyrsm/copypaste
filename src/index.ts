@@ -281,7 +281,7 @@ initDb();
 // Clean expired pastes every hour
 setInterval(cleanExpired, 60 * 60 * 1000);
 
-const port = parseInt(process.env.PORT || "3000");
+const port = parseInt(process.env.PORT || "3000", 10);
 console.log(`CopyPaste running on http://localhost:${port}`);
 
 export default {

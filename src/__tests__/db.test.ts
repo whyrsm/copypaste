@@ -73,7 +73,7 @@ describe("insertPaste / getPaste", () => {
     );
     const paste = getPaste("full-fields-slug");
     expect(paste).not.toBeNull();
-    const fields: (keyof typeof paste)[] = [
+    const fields: (keyof NonNullable<typeof paste>)[] = [
       "id",
       "slug",
       "content",

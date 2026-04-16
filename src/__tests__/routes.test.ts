@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 const { default: server } = await import("../index");
 
 async function req(path: string, options?: RequestInit) {
-  return server.fetch(new Request("http://localhost" + path, options));
+  return server.fetch(new Request(`http://localhost${path}`, options));
 }
 
 async function formReq(path: string, fields: Record<string, string>) {
@@ -126,7 +126,10 @@ describe("GET /:slug/raw", () => {
 describe("POST /:slug/copy", () => {
   test("returns { ok: true }", async () => {
     // Use a distinct IP to avoid triggering the rate limiter from other tests
-    const body = new URLSearchParams({ content: "copy tracking test", slug: "copy-track-slug" });
+    const body = new URLSearchParams({
+      content: "copy tracking test",
+      slug: "copy-track-slug",
+    });
     await req("/api/paste", {
       method: "POST",
       headers: {
