@@ -26,7 +26,7 @@ jobs:
             echo "=== Installing dependencies ==="
             bun install
             echo "=== Restarting service ==="
-            systemctl restart copypaste.service
+            sudo systemctl restart copypaste.service
             sleep 5
-            systemctl is-active copypaste.service
+            sudo systemctl is-active copypaste.service
             echo "=== Deploy complete ==="
