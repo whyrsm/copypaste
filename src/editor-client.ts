@@ -1,22 +1,23 @@
 /// <reference lib="dom" />
-import { EditorView, basicSetup } from "codemirror";
-import { EditorState, Compartment } from "@codemirror/state";
-import { oneDark } from "@codemirror/theme-one-dark";
-import { javascript } from "@codemirror/lang-javascript";
-import { html as langHtml } from "@codemirror/lang-html";
+
+import { cpp as langCpp } from "@codemirror/lang-cpp";
 import { css as langCss } from "@codemirror/lang-css";
+import { go as langGo } from "@codemirror/lang-go";
+import { html as langHtml } from "@codemirror/lang-html";
+import { java as langJava } from "@codemirror/lang-java";
+import { javascript } from "@codemirror/lang-javascript";
 import { json as langJson } from "@codemirror/lang-json";
 import { markdown as langMarkdown } from "@codemirror/lang-markdown";
 import { python as langPython } from "@codemirror/lang-python";
-import { go as langGo } from "@codemirror/lang-go";
 import { rust as langRust } from "@codemirror/lang-rust";
-import { java as langJava } from "@codemirror/lang-java";
 import { sql as langSql } from "@codemirror/lang-sql";
-import { yaml as langYaml } from "@codemirror/lang-yaml";
 import { xml as langXml } from "@codemirror/lang-xml";
-import { cpp as langCpp } from "@codemirror/lang-cpp";
+import { yaml as langYaml } from "@codemirror/lang-yaml";
 import { StreamLanguage } from "@codemirror/language";
 import { shell as shellMode } from "@codemirror/legacy-modes/mode/shell";
+import { Compartment, EditorState } from "@codemirror/state";
+import { oneDark } from "@codemirror/theme-one-dark";
+import { basicSetup, EditorView } from "codemirror";
 
 type LanguageName = keyof typeof langFor;
 
@@ -60,7 +61,9 @@ function resolveLang(name: string) {
 function currentTheme() {
   const attr = document.documentElement.getAttribute("data-theme");
   if (attr) return attr;
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  return window.matchMedia("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "light";
 }
 
 function themeExtension(theme: string) {
@@ -120,7 +123,7 @@ function mount(options: EditorMountOptions) {
     extensions.push(
       EditorView.updateListener.of((v) => {
         if (v.docChanged) hiddenInput.value = v.state.doc.toString();
-      })
+      }),
     );
   }
 
@@ -168,7 +171,10 @@ function mount(options: EditorMountOptions) {
       toggle();
     });
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && fullscreenWrapper.classList.contains("editor-fullscreen")) {
+      if (
+        e.key === "Escape" &&
+        fullscreenWrapper.classList.contains("editor-fullscreen")
+      ) {
         toggle();
       }
     });
@@ -177,4 +183,9 @@ function mount(options: EditorMountOptions) {
   return view;
 }
 
-(window as any).CopyPasteEditor = { mount };
+declare global {
+  interface Window {
+    CopyPasteEditor: { mount: typeof mount };
+  }
+}
+window.CopyPasteEditor = { mount };

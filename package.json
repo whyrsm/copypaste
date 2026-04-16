@@ -5,7 +5,9 @@
     "build:editor": "bun build src/editor-client.ts --outfile static/editor.js --target browser --format esm --minify",
     "dev": "bun run build:editor && bun run --hot src/index.ts",
     "start": "bun run build:editor && bun run src/index.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "lint": "biome check src/",
+    "format": "biome format src/ --write"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.3",
@@ -31,6 +33,7 @@
     "hono": "^4"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.12",
     "@types/bun": "latest"
   }
 }

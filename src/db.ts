@@ -24,7 +24,10 @@ export function initDb() {
   `);
 
   // Migrate: add columns if missing
-  const columns = db.query<{ name: string }, []>("PRAGMA table_info(pastes)").all().map((c) => c.name);
+  const columns = db
+    .query<{ name: string }, []>("PRAGMA table_info(pastes)")
+    .all()
+    .map((c) => c.name);
   if (!columns.includes("views")) {
     db.run("ALTER TABLE pastes ADD COLUMN views INTEGER NOT NULL DEFAULT 0");
   }
@@ -37,7 +40,9 @@ export function initDb() {
   if (!columns.includes("author_token")) {
     db.run("ALTER TABLE pastes ADD COLUMN author_token TEXT");
   }
-  db.run("CREATE INDEX IF NOT EXISTS idx_pastes_author_token ON pastes (author_token)");
+  db.run(
+    "CREATE INDEX IF NOT EXISTS idx_pastes_author_token ON pastes (author_token)",
+  );
 }
 
 export interface Paste {
@@ -59,16 +64,19 @@ export function insertPaste(
   passwordHash: string | null,
   expiresAt: string | null,
   language: string | null,
-  authorToken: string | null
+  authorToken: string | null,
 ): boolean {
   try {
     db.run(
       "INSERT INTO pastes (slug, content, password_hash, expires_at, language, author_token) VALUES (?, ?, ?, ?, ?, ?)",
-      [slug, content, passwordHash, expiresAt, language, authorToken]
+      [slug, content, passwordHash, expiresAt, language, authorToken],
     );
     return true;
-  } catch (err: any) {
-    if (err.message?.includes("UNIQUE constraint failed")) {
+  } catch (err) {
+    if (
+      err instanceof Error &&
+      err.message.includes("UNIQUE constraint failed")
+    ) {
       return false;
     }
     throw err;
@@ -76,15 +84,19 @@ export function insertPaste(
 }
 
 export function getPaste(slug: string): Paste | null {
-  return db.query<Paste, [string]>(
-    "SELECT id, slug, content, password_hash, views, copies, created_at, expires_at, language, author_token FROM pastes WHERE slug = ?"
-  ).get(slug);
+  return db
+    .query<Paste, [string]>(
+      "SELECT id, slug, content, password_hash, views, copies, created_at, expires_at, language, author_token FROM pastes WHERE slug = ?",
+    )
+    .get(slug);
 }
 
 export function getPastesByAuthor(authorToken: string): Paste[] {
-  return db.query<Paste, [string]>(
-    "SELECT id, slug, content, password_hash, views, copies, created_at, expires_at, language, author_token FROM pastes WHERE author_token = ? ORDER BY created_at DESC LIMIT 100"
-  ).all(authorToken);
+  return db
+    .query<Paste, [string]>(
+      "SELECT id, slug, content, password_hash, views, copies, created_at, expires_at, language, author_token FROM pastes WHERE author_token = ? ORDER BY created_at DESC LIMIT 100",
+    )
+    .all(authorToken);
 }
 
 export function incrementViews(slug: string) {
@@ -100,5 +112,7 @@ export function deletePaste(slug: string) {
 }
 
 export function cleanExpired() {
-  db.run("DELETE FROM pastes WHERE expires_at IS NOT NULL AND expires_at < datetime('now')");
+  db.run(
+    "DELETE FROM pastes WHERE expires_at IS NOT NULL AND expires_at < datetime('now')",
+  );
 }

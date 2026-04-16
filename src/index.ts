@@ -1,14 +1,35 @@
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
 import { getCookie, setCookie } from "hono/cookie";
-import { initDb, insertPaste, getPaste, getPastesByAuthor, deletePaste, incrementViews, incrementCopies, cleanExpired } from "./db";
-import { generateSlug } from "./slug";
-import { homePage, pastePage, passwordPage, errorPage, myPastesPage } from "./views";
+import {
+  cleanExpired,
+  deletePaste,
+  getPaste,
+  getPastesByAuthor,
+  incrementCopies,
+  incrementViews,
+  initDb,
+  insertPaste,
+} from "./db";
 import { isLanguage } from "./languages";
+import { generateSlug } from "./slug";
+import {
+  errorPage,
+  homePage,
+  myPastesPage,
+  passwordPage,
+  pastePage,
+} from "./views";
 
 const app = new Hono<{ Variables: { authorToken: string } }>();
 
-const RESERVED_SLUGS = new Set(["api", "static", "favicon.ico", "health", "my"]);
+const RESERVED_SLUGS = new Set([
+  "api",
+  "static",
+  "favicon.ico",
+  "health",
+  "my",
+]);
 const SLUG_REGEX = /^[a-zA-Z0-9_-]{3,100}$/;
 const MAX_CONTENT_LENGTH = 512 * 1024; // 512KB
 
@@ -73,7 +94,10 @@ app.get("/my", (c) => {
 app.post("/api/paste", async (c) => {
   const ip = c.req.header("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
   if (isRateLimited(ip)) {
-    return c.html(homePage("Too many pastes. Please wait a minute and try again."), 429);
+    return c.html(
+      homePage("Too many pastes. Please wait a minute and try again."),
+      429,
+    );
   }
 
   const body = await c.req.parseBody();
@@ -98,9 +122,9 @@ app.post("/api/paste", async (c) => {
     if (!SLUG_REGEX.test(customSlug)) {
       return c.html(
         homePage(
-          "Invalid slug. Use 3-100 characters: letters, numbers, hyphens, underscores."
+          "Invalid slug. Use 3-100 characters: letters, numbers, hyphens, underscores.",
         ),
-        400
+        400,
       );
     }
     if (RESERVED_SLUGS.has(customSlug.toLowerCase())) {
@@ -135,7 +159,14 @@ app.post("/api/paste", async (c) => {
   // Insert with collision retry
   const authorToken = c.get("authorToken");
   for (let attempt = 0; attempt < 3; attempt++) {
-    const ok = insertPaste(slug, content, passwordHash, expiresAt, language, authorToken);
+    const ok = insertPaste(
+      slug,
+      content,
+      passwordHash,
+      expiresAt,
+      language,
+      authorToken,
+    );
     if (ok) {
       return c.redirect(`/${slug}`, 303);
     }
@@ -146,7 +177,10 @@ app.post("/api/paste", async (c) => {
     slug = generateSlug();
   }
 
-  return c.html(errorPage("Failed to create paste. Please try again.", 500), 500);
+  return c.html(
+    errorPage("Failed to create paste. Please try again.", 500),
+    500,
+  );
 });
 
 // Track copy event
